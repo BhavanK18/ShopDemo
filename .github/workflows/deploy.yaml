@@ -28,24 +28,24 @@ jobs:
       - name: Build Docker Image
         run: |
           GIT_SHA=$(git rev-parse --short HEAD)
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/flask-app:$GIT_SHA .
-          docker tag ${{ secrets.DOCKERHUB_USERNAME }}/flask-app:$GIT_SHA ${{ secrets.DOCKERHUB_USERNAME }}/flask-app:v1.2
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/shopdemo:$GIT_SHA .
+          docker tag ${{ secrets.DOCKERHUB_USERNAME }}/shopdemo:$GIT_SHA ${{ secrets.DOCKERHUB_USERNAME }}/shopdemo:v1.2
 
       - name: Push Docker Image
         run: |
           GIT_SHA=$(git rev-parse --short HEAD)
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/flask-app:$GIT_SHA
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/flask-app:v1.2
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/shopdemo:$GIT_SHA
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/shopdemo:v1.0
 
   deploy:
     name: Deploy on EC2 Self-hosted Runner
     runs-on: self-hosted
     needs: build
     steps:
-      - name: Stop existing flask-app container
+      - name: Stop existing shopdemo container
         run: |
-          docker stop flask-app || true
-          docker rm flask-app || true
+          docker stop shopdemo || true
+          docker rm shopdemo || true
 
       - name: Free port 5000 if already allocated
         run: |
@@ -54,15 +54,15 @@ jobs:
 
       - name: Pull latest Docker image
         run: |
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/flask-app:v1.2
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/shopdemo:v1.2
 
-      - name: Run new flask-app container
+      - name: Run new shopdemo container
         run: |
           docker run -d \
-            --name flask-app \
+            --name shopdemo \
             -p 5000:5000 \
             --restart unless-stopped \
-            ${{ secrets.DOCKERHUB_USERNAME }}/flask-app:v1.2
+            ${{ secrets.DOCKERHUB_USERNAME }}/shopdemo:v1.2
 
       - name: Clean unused Docker resources
         run: |
