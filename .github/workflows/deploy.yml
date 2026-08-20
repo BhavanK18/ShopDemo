@@ -1,0 +1,104 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Push Docker Image
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: DockerHub Login
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
+          docker login \
+            -u "${{ secrets.DOCKERHUB_USERNAME }}" \
+            --password-stdin
+
+      - name: Get Git SHA
+        id: git_sha
+        run: |
+          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build Docker Image
+        run: |
+          docker build \
+            -t ${{ secrets.DOCKERHUB_USERNAME }}/shopdemo:${{ steps.git_sha.outputs.sha }} \
+            .
+
+      - name: Tag Docker Image
+        run: |
+          docker tag \
+            ${{ secrets.DOCKERHUB_USERNAME }}/shopdemo:${{ steps.git_sha.outputs.sha }} \
+            ${{ secrets.DOCKERHUB_USERNAME }}/shopdemo:v1.2
+
+      - name: Push Git SHA Image
+        run: |
+          docker push \
+            ${{ secrets.DOCKERHUB_USERNAME }}/shopdemo:${{ steps.git_sha.outputs.sha }}
+
+      - name: Push Version Image
+        run: |
+          docker push \
+            ${{ secrets.DOCKERHUB_USERNAME }}/shopdemo:v1.2
+
+
+  deploy:
+    name: Deploy on EC2
+    runs-on: self-hosted
+    needs: build
+
+    steps:
+      - name: DockerHub Login
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
+          docker login \
+            -u "${{ secrets.DOCKERHUB_USERNAME }}" \
+            --password-stdin
+
+      - name: Stop Existing Container
+        run: |
+          docker stop shop-app || true
+          docker rm shop-app || true
+
+      - name: Free Port 5000
+        run: |
+          docker ps -q --filter "publish=5000" | xargs -r docker stop
+          docker ps -aq --filter "publish=5000" | xargs -r docker rm
+
+      - name: Pull Latest Image
+        run: |
+          docker pull \
+            ${{ secrets.DOCKERHUB_USERNAME }}/shopdemo:v1.2
+
+      - name: Run New Container
+        run: |
+          docker run -d \
+            --name shop-app \
+            -p 5000:5000 \
+            --restart unless-stopped \
+            ${{ secrets.DOCKERHUB_USERNAME }}/shopdemo:v1.2
+
+      - name: Wait for Application
+        run: |
+          sleep 5
+
+      - name: Check Container
+        run: |
+          docker ps -a
+          docker logs --tail 30 shop-app
+
+      - name: Test Application
+        run: |
+          curl -f http://localhost:5000
+
+      - name: Clean Unused Docker Resources
+        run: |
+          docker system prune -f
